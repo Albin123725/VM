@@ -15,9 +15,9 @@ docker run -d \
   --name debian11-vm \
   --restart unless-stopped \
   -v $(pwd)/vm-data:/data \
-  -e VM_RAM=16000 \
-  -e VM_CPU=4 \
-  -e VM_DISK=80G \
+  -e VM_RAM=24000 \
+  -e VM_CPU=8 \
+  -e VM_DISK=70G \
   -p 2026:2222 \
   -p 3399:3389 \
   -p 6080:6080 \
