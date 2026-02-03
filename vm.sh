@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==========================================
-# 🚀 GAMEPLANNET - FULL VM CONFIGURATION
-# Features: Pterodactyl, TeraBox Auto-Sync, Auto-Mount, Daily Backup
+# 🚀 GAMEPLANNET - FINAL STABLE VM CONFIGURATION
+# Features: Pterodactyl, TeraBox Sync, Permissions Fix, Daily Backup
 # ==========================================
 set -euo pipefail
 
@@ -10,8 +10,8 @@ set -euo pipefail
 HOSTNAME="GamePlannet"
 USERNAME="root"
 PASSWORD="root"
-MEMORY=12G      # Balanced for stability
-CPUS=8          # Recommended for KVM
+MEMORY=12G      # Stability-ക്കായി 12G ശുപാർശ ചെയ്യുന്നു
+CPUS=8          # Smooth performance
 DISK_SIZE=300G
 
 WEB_PORT=8080
@@ -35,19 +35,19 @@ RUN_FLAG="$VM_DIR/vm_should_run.flag"
 echo "🧹 Cleaning old sessions..."
 tmux kill-session -t vm_console 2>/dev/null || true
 
-# 3. MOUNT TERABOX (The Core Resource)
+# 3. MOUNT TERABOX
 # ------------------------------------------
 echo "📡 Connecting to TeraBox..."
-fusermount -u "$CLOUD_MNT" 2>/dev/null || true
-
-nohup rclone mount terabox: "$CLOUD_MNT" \
-  --vfs-cache-mode writes \
-  --buffer-size 64M \
-  --vfs-read-chunk-size 32M \
-  --allow-other > rclone_mount.log 2>&1 &
-
-echo "⏳ Waiting for Cloud Storage to stabilize (25s)..."
-sleep 25
+if ! mountpoint -q "$CLOUD_MNT"; then
+    fusermount -u "$CLOUD_MNT" 2>/dev/null || true
+    nohup rclone mount terabox: "$CLOUD_MNT" \
+      --vfs-cache-mode writes \
+      --buffer-size 64M \
+      --vfs-read-chunk-size 32M \
+      --allow-other > rclone_mount.log 2>&1 &
+    echo "⏳ Waiting for Cloud Storage to stabilize (25s)..."
+    sleep 25
+fi
 
 # 4. DISK SETUP
 # ------------------------------------------
@@ -64,7 +64,7 @@ fi
 # 5. CLOUD-INIT (THE ADDED FEATURES SECTION)
 # ------------------------------------------
 rm -f "$VM_DIR/seed.iso"
-echo "⚙️ Configuring VM with Auto-Mount & Auto-Backup..."
+echo "⚙️ Configuring VM with Advanced Mount & Permissions..."
 
 cat > "$VM_DIR/user-data" <<EOF
 #cloud-config
@@ -80,32 +80,34 @@ bootcmd:
 
 runcmd:
   - systemctl restart ssh
-  # 1. Pterodactyl-ന് ആവശ്യമായ ഫോൾഡറുകൾ ഉണ്ടാക്കുന്നു
+  # 1. Pterodactyl-ന് ആവശ്യമായ മൗണ്ട് സെറ്റപ്പ്
   - mkdir -p /var/lib/pterodactyl
-  - mkdir -p /mnt/ptero_share
-  # 2. പ്രധാന മാറ്റം: TeraBox ഡാറ്റയെ നേരിട്ട് പാനൽ ഫോൾഡറിലേക്ക് മൗണ്ട് ചെയ്യുന്നു
-  - mount -t 9p -o trans=virtio,version=9p2000.L ptero_share /var/lib/pterodactyl
-  # 3. ബാക്കപ്പിന് വേണ്ടി ഒരു ലിങ്ക് കൂടി നൽകുന്നു
-  - mount --bind /var/lib/pterodactyl /mnt/ptero_share
-  # 4. ഓട്ടോ ബാക്കപ്പ് സ്ക്രിപ്റ്റ് (TeraBox-ലേക്ക് തനിയെ പോകും)
+  - mount -t 9p -o trans=virtio,version=9p2000.L,msize=262144,sync ptero_share /var/lib/pterodactyl
+  - chmod -R 777 /var/lib/pterodactyl
+  # 2. Wings Configuration Fix (Permission Denied ഒഴിവാക്കാൻ)
+  - |
+    if [ -f /etc/pterodactyl/config.yml ]; then
+      sed -i '/system:/a \  user:\n    rootless: true' /etc/pterodactyl/config.yml
+      systemctl restart wings || true
+    fi
+  # 3. ഓട്ടോ ബാക്കപ്പ് സ്ക്രിപ്റ്റ്
   - |
     cat > /usr/local/bin/auto-backup <<'INNER'
     #!/bin/bash
     TIME=\$(date +%Y-%m-%d_%H-%M)
     echo "Starting Pterodactyl Cloud Backup..."
-    # ഡാറ്റ കംപ്രസ് ചെയ്ത് അതേ TeraBox ഫോൾഡറിലേക്ക് തന്നെ സേവ് ചെയ്യുന്നു
     tar -czf /var/lib/pterodactyl/ptero_full_backup_\$TIME.tar.gz /var/lib/pterodactyl/volumes 2>/dev/null
     echo "Success! Backup saved inside TeraBox: ptero_full_backup_\$TIME.tar.gz"
     INNER
   - chmod +x /usr/local/bin/auto-backup
-  # 5. ദിവസവും രാത്രി 12 മണിക്ക് ഓട്ടോ ബാക്കപ്പ്
+  # 4. ദിവസവും രാത്രി 12 മണിക്ക് ഓട്ടോ ബാക്കപ്പ്
   - (crontab -l 2>/dev/null; echo "0 0 * * * /usr/local/bin/auto-backup") | crontab -
 EOF
 
 touch "$VM_DIR/meta-data"
 xorriso -as mkisofs -r -V cidata -J -o "$VM_DIR/seed.iso" "$VM_DIR/user-data" "$VM_DIR/meta-data"
 
-# 6. LAUNCH VM (VIRTFS ENABLED)
+# 6. LAUNCH VM (WITH MAPPED PERMISSIONS)
 # ------------------------------------------
 KVM_FLAG=""
 [ -c /dev/kvm ] && KVM_FLAG="-enable-kvm"
@@ -113,6 +115,7 @@ KVM_FLAG=""
 touch "$RUN_FLAG"
 echo "🚀 Launching GamePlannet VPS..."
 
+# 
 tmux new-session -d -s vm_console "bash -c '
 while true; do
   if [ -f \"$RUN_FLAG\" ]; then
@@ -136,6 +139,7 @@ done
 '"
 
 echo "✅ VM is successfully running!"
-echo "🛠️  Daily Backup is active. Manual backup: run 'auto-backup' inside VM."
+echo "🛠️ Pterodactyl Data is now synced with TeraBox."
+echo "🔐 Permissions are handled by 'mapped-xattr' to prevent crashes."
 sleep 2
 tmux attach-session -t vm_console
