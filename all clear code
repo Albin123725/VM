@@ -1,0 +1,2 @@
+# സൂക്ഷിക്കേണ്ടവ ഒഴികെ ബാക്കി എല്ലാം നീക്കം ചെയ്യാൻ
+find . -maxdepth 1 ! -name '.idx' ! -name 'vm.sh' ! -name '.' -exec rm -rf {} +
