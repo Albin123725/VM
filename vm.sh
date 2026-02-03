@@ -80,21 +80,25 @@ bootcmd:
 
 runcmd:
   - systemctl restart ssh
-  # [ADDED] Create mount point inside VM
+  # 1. Pterodactyl-ന് ആവശ്യമായ ഫോൾഡറുകൾ ഉണ്ടാക്കുന്നു
+  - mkdir -p /var/lib/pterodactyl
   - mkdir -p /mnt/ptero_share
-  # [ADDED] Auto-mount the TeraBox-linked folder from host
-  - mount -t 9p -o trans=virtio,version=9p2000.L ptero_share /mnt/ptero_share
-  # [ADDED] Creating the 'auto-backup' command script
+  # 2. പ്രധാന മാറ്റം: TeraBox ഡാറ്റയെ നേരിട്ട് പാനൽ ഫോൾഡറിലേക്ക് മൗണ്ട് ചെയ്യുന്നു
+  - mount -t 9p -o trans=virtio,version=9p2000.L ptero_share /var/lib/pterodactyl
+  # 3. ബാക്കപ്പിന് വേണ്ടി ഒരു ലിങ്ക് കൂടി നൽകുന്നു
+  - mount --bind /var/lib/pterodactyl /mnt/ptero_share
+  # 4. ഓട്ടോ ബാക്കപ്പ് സ്ക്രിപ്റ്റ് (TeraBox-ലേക്ക് തനിയെ പോകും)
   - |
     cat > /usr/local/bin/auto-backup <<'INNER'
     #!/bin/bash
     TIME=\$(date +%Y-%m-%d_%H-%M)
     echo "Starting Pterodactyl Cloud Backup..."
-    tar -czf /mnt/ptero_share/ptero_full_backup_\$TIME.tar.gz /var/lib/pterodactyl/volumes 2>/dev/null
+    # ഡാറ്റ കംപ്രസ് ചെയ്ത് അതേ TeraBox ഫോൾഡറിലേക്ക് തന്നെ സേവ് ചെയ്യുന്നു
+    tar -czf /var/lib/pterodactyl/ptero_full_backup_\$TIME.tar.gz /var/lib/pterodactyl/volumes 2>/dev/null
     echo "Success! Backup saved inside TeraBox: ptero_full_backup_\$TIME.tar.gz"
     INNER
   - chmod +x /usr/local/bin/auto-backup
-  # [ADDED] Setting up Cron Job for Daily Midnight Backup
+  # 5. ദിവസവും രാത്രി 12 മണിക്ക് ഓട്ടോ ബാക്കപ്പ്
   - (crontab -l 2>/dev/null; echo "0 0 * * * /usr/local/bin/auto-backup") | crontab -
 EOF
 
