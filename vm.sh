@@ -122,7 +122,7 @@ while true; do
       $KVM_FLAG -cpu host \
       -drive file=$DISK_FILE,format=qcow2,if=virtio \
       -cdrom $VM_DIR/seed.iso \
-      -virtfs local,path=$PTERO_DATA_HOST,mount_tag=ptero_share,security_model=none \
+      -virtfs local,path=$PTERO_DATA_HOST,mount_tag=ptero_share,security_model=mapped-xattr,multidevs=remap \
       -virtfs local,path=$MYSQL_DATA_HOST,mount_tag=mysql_share,security_model=none \
       -netdev user,id=net0,hostfwd=tcp::2222-:22,hostfwd=tcp::$WEB_PORT-:80,hostfwd=tcp::$MC_PORT-:25565,hostfwd=udp::$MC_UDP_PORT-:19132,hostfwd=tcp::$WINGS_PORT-:8080 \
       -device virtio-net-pci,netdev=net0 \
